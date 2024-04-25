@@ -17,7 +17,7 @@ conn = snowflake.connector.connect(
 
 cursor = conn.cursor()
 
-cursor.execute("USE BHATBHATENI_DB")
+cursor.execute("USE BHATBHATENI_DWH")
 
 cursor.execute("CREATE OR REPLACE TABLE TMP.TMP_D_COUNTRY_LU (id NUMBER, country_desc VARCHAR(256), PRIMARY KEY (id));")
 print("Table created successfully: TMP_D_COUNTRY_LU")

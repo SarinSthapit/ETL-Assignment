@@ -17,7 +17,7 @@ conn = snowflake.connector.connect(
 
 cursor = conn.cursor()
 
-cursor.execute("USE BHATBHATENI_DB")
+cursor.execute("USE BHATBHATENI_DWH")
 
 cursor.execute("CREATE OR REPLACE TABLE STG.STG_D_COUNTRY_LU (id NUMBER, country_desc VARCHAR(256), PRIMARY KEY (id));")
 print("Table created successfully: STG_D_COUNTRY_LU")
@@ -43,7 +43,7 @@ print("Table created successfully: STG_D_CUSTOMER_LU")
 cursor.execute("CREATE OR REPLACE TABLE STG.STG_D_SALES_LU (id NUMBER, store_id NUMBER NOT NULL, product_id NUMBER NOT NULL, customer_id NUMBER, transaction_time TIMESTAMP, quantity NUMBER, amount NUMBER(20,2), discount NUMBER(20,2), primary key (id), FOREIGN KEY (store_id) references STG.STG_D_STORE_LU(id), FOREIGN KEY (product_id) references STG.STG_D_PRODUCT_LU(id), FOREIGN KEY (customer_id) references STG.STG_D_CUSTOMER_LU(id));")
 print("Table created successfully: STG_D_SALES_LU")
 
-cursor.execute("CREATE OR REPLACE TABLE STG.STG_D_LOCATION_HIERARCHY_LU (location_id NUMBER AUTOINCREMENT PRIMARY KEY, sales_id NUMBER, store_id NUMBER, region_id NUMBER, country_id NUMBER, FOREIGN KEY (store_id) REFERENCES STG.STG_D_STORE_LU(id), FOREIGN KEY (region_id) REFERENCES STG.STG_D_REGION_LU(id), FOREIGN KEY (country_id) REFERENCES STG.STG_D_COUNTRY_LU(id));")
+cursor.execute("CREATE OR REPLACE TABLE STG.STG_D_LOCATION_HIERARCHY_LU (id NUMBER AUTOINCREMENT PRIMARY KEY, sales_id NUMBER, store_id NUMBER, region_id NUMBER, country_id NUMBER, FOREIGN KEY (store_id) REFERENCES STG.STG_D_STORE_LU(id), FOREIGN KEY (region_id) REFERENCES STG.STG_D_REGION_LU(id), FOREIGN KEY (country_id) REFERENCES STG.STG_D_COUNTRY_LU(id));")
 print("Table created successfully: STG_D_LOCATION_HIERARCHY_LU")
 
 cursor.close()

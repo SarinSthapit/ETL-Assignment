@@ -17,7 +17,7 @@ conn = snowflake.connector.connect(
 
 cursor = conn.cursor()
 
-cursor.execute("USE BHATBHATENI_DB")
+cursor.execute("USE BHATBHATENI_DWH")
 cursor.execute("CREATE STAGE IF NOT EXISTS ETL_FILE_STAGE")
 
 folder_path = 'C:/Users/HP/Desktop/ETL-Assignment/csv_files'

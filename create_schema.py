@@ -17,7 +17,7 @@ conn = snowflake.connector.connect(
 
 cursor = conn.cursor()
 
-cursor.execute("USE BHATBHATENI_DB")
+cursor.execute("USE BHATBHATENI_DWH")
 
 stg_schema_sql = "CREATE SCHEMA IF NOT EXISTS STG"
 tmp_schema_sql = "CREATE SCHEMA IF NOT EXISTS TMP"

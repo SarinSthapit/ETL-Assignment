@@ -118,7 +118,7 @@ def main():
         account=account
     )
     cursor = conn.cursor()
-    cursor.execute("USE BHATBHATENI_DB")
+    cursor.execute("USE BHATBHATENI_DWH")
     stage_name = 'ETL_FILE_STAGE'
     staging_table = 'STG.STG_D_SALES_LU';
     temporary_table = 'TMP.TMP_D_SALES_LU';

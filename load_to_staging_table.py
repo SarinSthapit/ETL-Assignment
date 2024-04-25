@@ -17,7 +17,7 @@ conn = snowflake.connector.connect(
 
 cursor = conn.cursor()
 
-cursor.execute("USE BHATBHATENI_DB")
+cursor.execute("USE BHATBHATENI_DWH")
 
 stage_name = 'FILE_STAGE'
 table_name = 'STG.STG_D_REGION_LU'
