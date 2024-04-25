@@ -1,15 +1,14 @@
-import snowflake.connector;
+import snowflake.connector; # type: ignore
 import csv
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv # type: ignore
+
+def truncate_tables(cursor, table_name):
+    cursor.execute(f"TRUNCATE TABLE {table_name}")
+    print(f"Table {table_name} truncated")
 
 
-def load_from_stage_to_table(cursor):
-    
-    cursor.execute("USE DWH_BHATBHATENI")
-    stage_name = 'DWH_FILE_STAGE'
-    table_name = 'DWH_STG.STG_D_CUSTOMER_LU'
-
+def load_from_stage_to_table(cursor, stage_name, table_name):
     file_pattern = 'customer_data.csv/customer_data.csv.gz'
     skip_rows = 1
 
@@ -22,6 +21,80 @@ def load_from_stage_to_table(cursor):
         print(f"Error: {e}")
 
     print(f"Data loaded into {table_name} staging table from stage {stage_name}")
+
+
+
+def handle_data_update(cursor, staging_table, temporary_table, key_column):
+    query = f"""
+            MERGE INTO {temporary_table} tmp
+            USING {staging_table} stg ON tmp.{key_column} = stg.{key_column}
+            WHEN NOT MATCHED THEN 
+                INSERT (tmp.id, tmp.customer_first_name, tmp.customer_middle_name, tmp.customer_last_name, tmp.customer_address)
+                VALUES (stg.id, stg.customer_first_name, stg.customer_middle_name, stg.customer_last_name, stg.customer_address)
+            WHEN MATCHED THEN UPDATE SET 
+                tmp.id = stg.id, 
+                tmp.customer_first_name = stg.customer_first_name, 
+                tmp.customer_middle_name = stg.customer_middle_name, 
+                tmp.customer_last_name = stg.customer_last_name, 
+                tmp.customer_address = stg.customer_address
+        """
+    cursor.execute(query)
+    print(f"Handling data updation for {temporary_table} completed.")
+
+
+def reclassify_and_add_rows(cursor, staging_table, temporary_table, key_column):
+    query = f"""
+            INSERT INTO {temporary_table} (id, customer_first_name, customer_middle_name, customer_last_name, customer_address)
+            SELECT stg.{key_column}, stg.customer_first_name, stg.customer_middle_name, stg.customer_last_name, stg.customer_address
+            FROM {staging_table} stg
+            WHERE stg.{key_column} NOT IN (SELECT {key_column} 
+            FROM {temporary_table})
+        """
+    cursor.execute(query)
+    print(f"Reclassification and addition of rows completed for {temporary_table}.")
+
+def handle_closing_dimension(cursor, temporary_table, target_table, key_column):
+    sequence_query = f"""
+                       CREATE SEQUENCE sequence_key
+                        START = 1
+                        INCREMENT = 1
+                        NOORDER;
+                    """
+    cursor.execute(sequence_query)
+    query = f"""
+            MERGE INTO {target_table} AS tgt
+                USING {temporary_table} AS tmp ON tgt.{key_column} = tmp.{key_column}
+                WHEN NOT MATCHED THEN 
+                    INSERT (customer_key, id, customer_first_name, customer_middle_name, customer_last_name, customer_address, active_flag, created_at, updated_at)
+                    VALUES (
+                        sequence_key.NEXTVAL,
+                        tmp.id, 
+                        tmp.customer_first_name, 
+                        tmp.customer_middle_name, 
+                        tmp.customer_last_name, 
+                        tmp.customer_address,
+                        'Y',
+                        CURRENT_TIMESTAMP,
+                        CURRENT_TIMESTAMP
+                    )
+
+                WHEN MATCHED THEN UPDATE SET 
+                    tgt.customer_key = sequence_key.NEXTVAL,
+                    tgt.id = tmp.id, 
+                    tgt.customer_first_name = tmp.customer_first_name,
+                    tgt.customer_middle_name = tmp.customer_middle_name,
+                    tgt.customer_last_name = tmp.customer_last_name,
+                    tgt.customer_address = tmp.customer_address,
+                    tgt.active_flag = 'Y',
+                    tgt.created_at = CURRENT_TIMESTAMP,
+                    tgt.updated_at = CURRENT_TIMESTAMP
+
+        """
+    cursor.execute(query)
+    drop_query = "DROP SEQUENCE sequence_key"
+    cursor.execute(drop_query);
+    print(f"Handling closing dimension for {target_table} completed.")
+
 
 
 def main():
@@ -37,8 +110,20 @@ def main():
         account=account
     )
     cursor = conn.cursor()
+    cursor.execute("USE BHATBHATENI_DB")
+    stage_name = 'ETL_FILE_STAGE'
+    staging_table = 'STG.STG_D_CUSTOMER_LU';
+    temporary_table = 'TMP.TMP_D_CUSTOMER_LU';
+    target_table = 'TGT.DWH_D_CUSTOMER_LU';
+    key_column = 'id'
 
-    load_from_stage_to_table(cursor);
+    truncate_tables(cursor, staging_table);
+    load_from_stage_to_table(cursor, stage_name, staging_table);
+    truncate_tables(cursor, temporary_table);
+    handle_data_update(cursor, staging_table, temporary_table, key_column);
+    truncate_tables(cursor, target_table);
+    handle_closing_dimension(cursor, temporary_table, target_table, key_column);
+
 
     cursor.close()
     conn.close()

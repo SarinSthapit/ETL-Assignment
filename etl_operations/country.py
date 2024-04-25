@@ -1,7 +1,7 @@
-import snowflake.connector;
+import snowflake.connector; # type: ignore
 import csv
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv # type: ignore
 
 def truncate_tables(cursor, table_name):
     cursor.execute(f"TRUNCATE TABLE {table_name}")
@@ -20,7 +20,70 @@ def load_from_stage_to_table(cursor, stage_name, table_name):
     except snowflake.connector.errors.ProgrammingError as e:
         print(f"Error: {e}")
 
-    print(f"Data loaded into {table_name} staging table from stage {stage_name}")
+
+
+def handle_data_update(cursor, staging_table, temporary_table, key_column):
+    query = f"""
+            MERGE INTO {temporary_table} tmp
+            USING {staging_table} stg ON tmp.{key_column} = stg.{key_column}
+            WHEN NOT MATCHED THEN 
+                INSERT (tmp.id, tmp.country_desc)
+                VALUES (stg.id, stg.country_desc)
+            WHEN MATCHED THEN UPDATE SET 
+                tmp.id = stg.id, 
+                tmp.country_desc = stg.country_desc
+        """
+    cursor.execute(query)
+    print(f"Handling data updation for {temporary_table} completed.")
+
+
+def reclassify_and_add_rows(cursor, staging_table, temporary_table, key_column):
+    query = f"""
+            INSERT INTO {temporary_table} (id, country_desc)
+            SELECT stg.{key_column}, stg.country_desc
+            FROM {staging_table} stg
+            WHERE stg.{key_column} NOT IN (SELECT {key_column} 
+            FROM {temporary_table})
+        """
+    cursor.execute(query)
+    print(f"Reclassification and addition of rows completed for {temporary_table}.")
+
+def handle_closing_dimension(cursor, temporary_table, target_table, key_column):
+    sequence_query = f"""
+                       CREATE SEQUENCE sequence_key
+                        START = 1
+                        INCREMENT = 1
+                        NOORDER;
+                    """
+    cursor.execute(sequence_query)
+    query = f"""
+            MERGE INTO {target_table} AS tgt
+                USING {temporary_table} AS tmp ON tgt.{key_column} = tmp.{key_column}
+                WHEN NOT MATCHED THEN 
+                    INSERT (country_key, id, country_desc, active_flag, created_at, updated_at)
+                    VALUES (
+                        sequence_key.NEXTVAL,
+                        tmp.id, 
+                        tmp.country_desc,
+                        'Y',
+                        CURRENT_TIMESTAMP,
+                        CURRENT_TIMESTAMP
+                    )
+
+                WHEN MATCHED THEN UPDATE SET 
+                    tgt.country_key = sequence_key.NEXTVAL,
+                    tgt.id = tmp.id, 
+                    tgt.country_desc = tmp.country_desc,
+                    tgt.active_flag = 'Y',
+                    tgt.created_at = CURRENT_TIMESTAMP,
+                    tgt.updated_at = CURRENT_TIMESTAMP
+
+        """
+    cursor.execute(query)
+    drop_query = "DROP SEQUENCE sequence_key"
+    cursor.execute(drop_query);
+    print(f"Handling closing dimension for {target_table} completed.")
+
 
 
 def main():
@@ -36,12 +99,20 @@ def main():
         account=account
     )
     cursor = conn.cursor()
-    cursor.execute("USE DWH_BHATBHATENI")
-    stage_name = 'DWH_FILE_STAGE'
-    table_name = 'DWH_STG.STG_D_COUNTRY_LU'
+    cursor.execute("USE BHATBHATENI_DB")
+    stage_name = 'ETL_FILE_STAGE'
+    staging_table = 'STG.STG_D_COUNTRY_LU';
+    temporary_table = 'TMP.TMP_D_COUNTRY_LU';
+    target_table = 'TGT.DWH_D_COUNTRY_LU';
+    key_column = 'id'
 
-    truncate_tables(cursor, table_name)
-    load_from_stage_to_table(cursor, stage_name, table_name);
+    truncate_tables(cursor, staging_table);
+    load_from_stage_to_table(cursor, stage_name, staging_table);
+    truncate_tables(cursor, temporary_table);
+    handle_data_update(cursor, staging_table, temporary_table, key_column);
+    truncate_tables(cursor, target_table);
+    handle_closing_dimension(cursor, temporary_table, target_table, key_column);
+
 
     cursor.close()
     conn.close()
