@@ -1,6 +1,7 @@
-import snowflake.connector
+import snowflake.connector; # type: ignore
+import csv
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv # type: ignore
 
 load_dotenv()
 
@@ -16,8 +17,8 @@ conn = snowflake.connector.connect(
 
 cursor = conn.cursor()
 
-cursor.execute("USE DWH_BHATBHATENI")
-cursor.execute("CREATE STAGE IF NOT EXISTS DWH_FILE_STAGE")
+cursor.execute("USE BHATBHATENI_DB")
+cursor.execute("CREATE STAGE IF NOT EXISTS ETL_FILE_STAGE")
 
 folder_path = 'C:/Users/HP/Desktop/ETL-Assignment/csv_files'
 
@@ -26,7 +27,7 @@ file_names = os.listdir(folder_path)
 for file_name in file_names:
     csv_file_path = os.path.join(folder_path, file_name)
     
-    cursor.execute(f"PUT file://{csv_file_path} @DWH_FILE_STAGE/{file_name}")
+    cursor.execute(f"PUT file://{csv_file_path} @ETL_FILE_STAGE/{file_name}")
 
 conn.commit()
 

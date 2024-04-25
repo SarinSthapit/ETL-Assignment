@@ -1,7 +1,7 @@
-import snowflake.connector
+import snowflake.connector; # type: ignore
 import csv
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv # type: ignore
 
 load_dotenv()
 
@@ -17,7 +17,7 @@ conn = snowflake.connector.connect(
 
 cursor = conn.cursor()
 
-cursor.execute("USE DWH_BHATBHATENI")
+cursor.execute("USE BHATBHATENI_DB")
 
 cursor.execute("SHOW TABLES")
 

@@ -1,6 +1,8 @@
-import snowflake.connector
+import snowflake.connector; # type: ignore
+import csv
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv # type: ignore
+
 load_dotenv()
 
 user = os.getenv('USER')
@@ -16,7 +18,7 @@ conn = snowflake.connector.connect(
 
 cursor = conn.cursor()
 
-cursor.execute("USE DWH_BHATBHATENI")
+cursor.execute("USE BHATBHATENI_DB")
 cursor.execute("SELECT * FROM SALES")
 
 rows = cursor.fetchall()

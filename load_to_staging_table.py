@@ -1,7 +1,7 @@
-import snowflake.connector
+import snowflake.connector; # type: ignore
 import csv
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv # type: ignore
 
 load_dotenv()
 
@@ -17,10 +17,10 @@ conn = snowflake.connector.connect(
 
 cursor = conn.cursor()
 
-cursor.execute("USE DWH_BHATBHATENI")
+cursor.execute("USE BHATBHATENI_DB")
 
-stage_name = 'DWH_FILE_STAGE'
-table_name = 'DWH_STG.STG_D_REGION_LU'
+stage_name = 'FILE_STAGE'
+table_name = 'STG.STG_D_REGION_LU'
 
 file_pattern = 'region_data.csv/region_data.csv.gz'
 skip_rows = 1

@@ -1,6 +1,7 @@
-import snowflake.connector
+import snowflake.connector; # type: ignore
+import csv
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv # type: ignore
 
 load_dotenv()
 
@@ -16,11 +17,11 @@ conn = snowflake.connector.connect(
 
 cursor = conn.cursor()
 
-cursor.execute("USE DWH_BHATBHATENI")
+cursor.execute("USE BHATBHATENI_DB")
 
-stg_schema_sql = "CREATE SCHEMA IF NOT EXISTS DWH_STG"
-tmp_schema_sql = "CREATE SCHEMA IF NOT EXISTS DWH_TMP"
-tgt_schema_sql = "CREATE SCHEMA IF NOT EXISTS DWH_TGT"
+stg_schema_sql = "CREATE SCHEMA IF NOT EXISTS STG"
+tmp_schema_sql = "CREATE SCHEMA IF NOT EXISTS TMP"
+tgt_schema_sql = "CREATE SCHEMA IF NOT EXISTS TGT"
 
 cursor.execute(stg_schema_sql)
 cursor.execute(tmp_schema_sql)
@@ -31,4 +32,4 @@ conn.commit()
 cursor.close()
 conn.close()
 
-print("Schemas created successfully: DWH_STG, DWH_TMP, DWH_TGT")
+print("Schemas created successfully: STG, TMP, TGT")
