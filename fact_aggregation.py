@@ -31,8 +31,8 @@ copy_query = f"""CREATE TABLE SARINSTHAPIT_DWH_F_BHATBHATENI_AGG_SLS_PLC_MONTH_T
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (store_key, product_key, year_month),
-    FOREIGN KEY (store_key) REFERENCES STORE(id),
-    FOREIGN KEY (product_key) REFERENCES PRODUCT(id));"""
+    FOREIGN KEY (store_key) REFERENCES TGT.DWH_D_STORE_LU (store_key),
+    FOREIGN KEY (product_key) REFERENCES TGT.DWH_D_PRODUCT_LU (product_key));"""
 cursor.execute(copy_query);
 
 insert_query = """

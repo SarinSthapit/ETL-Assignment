@@ -123,7 +123,6 @@ def main():
     load_from_stage_to_table(cursor, stage_name, staging_table);
     truncate_tables(cursor, temporary_table);
     handle_data_update(cursor, staging_table, temporary_table, key_column);
-    # truncate_tables(cursor, target_table);
     handle_closing_dimension(cursor, temporary_table, target_table, key_column);
 
 

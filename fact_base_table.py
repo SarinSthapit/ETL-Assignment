@@ -18,10 +18,10 @@ conn = snowflake.connector.connect(
 
 cursor = conn.cursor()
 
-cursor.execute("CREATE DATABASE SARINSTHAPIT_BHATBATENI CLONE BHATBHATENI;")
+cursor.execute("CREATE OR REPLACE DATABASE SARINSTHAPIT_BHATBATENI CLONE BHATBHATENI;")
 cursor.execute("USE SARINSTHAPIT_BHATBATENI")
 
-copy_query = f"""CREATE TABLE DWH_F_BHATBHATENI_SLS_TRXN_B (month DATE, total_sales_amount NUMBER(20, 2));"""
+copy_query = f"""CREATE OR REPLACE TABLE DWH_F_BHATBHATENI_SLS_TRXN_B (month DATE, total_sales_amount NUMBER(20, 2));"""
 cursor.execute(copy_query);
 
 insert_query = f"""INSERT INTO DWH_F_BHATBHATENI_SLS_TRXN_B (month, total_sales_amount)
