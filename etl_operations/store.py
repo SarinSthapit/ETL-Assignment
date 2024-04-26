@@ -25,15 +25,11 @@ def load_from_stage_to_table(cursor, stage_name, table_name):
 
 def handle_data_update(cursor, staging_table, temporary_table, key_column):
     query = f"""
-            MERGE INTO {temporary_table} tmp
-            USING {staging_table} stg ON tmp.{key_column} = stg.{key_column}
-            WHEN NOT MATCHED THEN 
-                INSERT (tmp.id, tmp.region_key, tmp.store_desc)
-                VALUES (stg.id, stg.region_id, stg.store_desc)
-            WHEN MATCHED THEN UPDATE SET 
-                tmp.id = stg.id, 
-                tmp.region_key = stg.region_id,
-                tmp.store_desc = stg.store_desc
+            INSERT INTO {temporary_table} (id, region_id, region_key, store_desc)
+            SELECT stg.id, stg.region_id, tgt.region_key, stg.store_desc
+            FROM {staging_table} stg 
+            JOIN TGT.DWH_D_REGION_LU as tgt
+            ON tgt.id = stg.region_id;
         """
     cursor.execute(query)
     print(f"Handling data updation for {temporary_table} completed.")
@@ -41,10 +37,13 @@ def handle_data_update(cursor, staging_table, temporary_table, key_column):
 
 def reclassify_and_add_rows(cursor, staging_table, temporary_table, key_column):
     query = f"""
-            INSERT INTO {temporary_table} (id, region_key, store_desc)
-            SELECT stg.{key_column}, stg.region_key, stg.store_desc
+            INSERT INTO {temporary_table} (id, region_id, region_key, store_desc)
+            SELECT stg.{key_column}, stg.region_id, tgt.region_key, stg.store_desc
             FROM {staging_table} stg
-            WHERE stg.{key_column} NOT IN (SELECT {key_column} 
+            JOIN TGT.DWH_D_REGION_LU as tgt
+            ON tgt.id = stg.region_id
+            WHERE stg.{key_column} NOT IN 
+            (SELECT {key_column} 
             FROM {temporary_table})
         """
     cursor.execute(query)
@@ -52,7 +51,7 @@ def reclassify_and_add_rows(cursor, staging_table, temporary_table, key_column):
 
 def handle_closing_dimension(cursor, temporary_table, target_table, key_column):
     sequence_query = f"""
-                       CREATE SEQUENCE sequence_key
+                       CREATE OR REPLACE SEQUENCE sequence_key
                         START = 1
                         INCREMENT = 1
                         NOORDER;
@@ -62,13 +61,14 @@ def handle_closing_dimension(cursor, temporary_table, target_table, key_column):
             MERGE INTO {target_table} AS tgt
                 USING {temporary_table} AS tmp ON tgt.{key_column} = tmp.{key_column}
                 WHEN NOT MATCHED THEN 
-                    INSERT (store_key, id, region_key, store_desc, active_flag, created_at, updated_at)
+                    INSERT (store_key, id, region_id, region_key, store_desc, active_flag, created_at, updated_at)
                     VALUES (
                         sequence_key.NEXTVAL,
                         tmp.id, 
+                        tmp.region_id,
                         tmp.region_key, 
                         tmp.store_desc, 
-                        'Y',
+                        'N',
                         CURRENT_TIMESTAMP,
                         CURRENT_TIMESTAMP
                     )
@@ -76,11 +76,10 @@ def handle_closing_dimension(cursor, temporary_table, target_table, key_column):
                 WHEN MATCHED THEN UPDATE SET 
                     tgt.store_key = sequence_key.NEXTVAL,
                     tgt.id = tmp.id, 
+                    tgt.region_id = tmp.region_id,
                     tgt.region_key = tmp.region_key,
                     tgt.store_desc = tmp.store_desc,
-                    tgt.active_flag = 'Y',
-                    tgt.created_at = CURRENT_TIMESTAMP,
-                    tgt.updated_at = CURRENT_TIMESTAMP
+                    tgt.active_flag = 'Y'
 
         """
     cursor.execute(query)
@@ -104,6 +103,16 @@ def main():
     )
     cursor = conn.cursor()
     cursor.execute("USE BHATBHATENI_DWH")
+
+    cursor.execute("CREATE OR REPLACE TABLE STG.STG_D_STORE_LU (id NUMBER, region_id NUMBER, store_desc VARCHAR(256), PRIMARY KEY (id), FOREIGN KEY (region_id) references STG.STG_D_REGION_LU(id));")
+    print("Table created successfully: STG_D_STORE_LU")
+
+    cursor.execute("CREATE OR REPLACE TABLE TMP.TMP_D_STORE_LU (id NUMBER, region_id NUMBER, region_key NUMBER, store_desc VARCHAR(256), PRIMARY KEY (id), FOREIGN KEY (region_key) references TGT.DWH_D_REGION_LU(region_key));")
+    print("Table created successfully: TMP_D_STORE_LU")
+
+    cursor.execute("CREATE OR REPLACE TABLE TGT.DWH_D_STORE_LU (store_key NUMBER, id NUMBER, region_id NUMBER, region_key NUMBER, store_desc VARCHAR(256), active_flag BOOLEAN, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (store_key), FOREIGN KEY (region_key) references TGT.DWH_D_REGION_LU(region_key));")
+    print("Table created successfully: DWH_D_STORE_LU")
+
     stage_name = 'ETL_FILE_STAGE'
     staging_table = 'STG.STG_D_STORE_LU';
     temporary_table = 'TMP.TMP_D_STORE_LU';

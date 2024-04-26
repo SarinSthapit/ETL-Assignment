@@ -26,18 +26,10 @@ def load_from_stage_to_table(cursor, stage_name, table_name):
 
 def handle_data_update(cursor, staging_table, temporary_table, key_column):
     query = f"""
-            MERGE INTO {temporary_table} tmp
-            USING {staging_table} stg ON tmp.{key_column} = stg.{key_column}
-            WHEN NOT MATCHED THEN 
-                INSERT (tmp.id, tmp.customer_first_name, tmp.customer_middle_name, tmp.customer_last_name, tmp.customer_address)
-                VALUES (stg.id, stg.customer_first_name, stg.customer_middle_name, stg.customer_last_name, stg.customer_address)
-            WHEN MATCHED THEN UPDATE SET 
-                tmp.id = stg.id, 
-                tmp.customer_first_name = stg.customer_first_name, 
-                tmp.customer_middle_name = stg.customer_middle_name, 
-                tmp.customer_last_name = stg.customer_last_name, 
-                tmp.customer_address = stg.customer_address
-        """
+            INSERT INTO {temporary_table} (id, customer_first_name, customer_middle_name, customer_last_name, customer_address)
+            SELECT id, customer_first_name, customer_middle_name, customer_last_name, customer_address
+            FROM {staging_table};
+    """
     cursor.execute(query)
     print(f"Handling data updation for {temporary_table} completed.")
 
@@ -111,6 +103,16 @@ def main():
     )
     cursor = conn.cursor()
     cursor.execute("USE BHATBHATENI_DWH")
+
+    cursor.execute("CREATE OR REPLACE TABLE STG.STG_D_CUSTOMER_LU (id NUMBER, customer_first_name VARCHAR(256), customer_middle_name VARCHAR(256), customer_last_name VARCHAR(256), customer_address VARCHAR(256), primary key (id));")
+    print("Table created successfully: STG_D_CUSTOMER_LU")
+
+    cursor.execute("CREATE OR REPLACE TABLE TMP.TMP_D_CUSTOMER_LU (id NUMBER, customer_first_name VARCHAR(256), customer_middle_name VARCHAR(256), customer_last_name VARCHAR(256), customer_address VARCHAR(256), primary key (id));")
+    print("Table created successfully: TMP_D_CUSTOMER_LU")
+
+    cursor.execute("CREATE OR REPLACE TABLE TGT.DWH_D_CUSTOMER_LU (customer_key NUMBER, id NUMBER, customer_first_name VARCHAR(256), customer_middle_name VARCHAR(256), customer_last_name VARCHAR(256), customer_address VARCHAR(256), active_flag BOOLEAN, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (customer_key));")
+    print("Table created successfully: DWH_D_CUSTOMER_LU")
+
     stage_name = 'ETL_FILE_STAGE'
     staging_table = 'STG.STG_D_CUSTOMER_LU';
     temporary_table = 'TMP.TMP_D_CUSTOMER_LU';

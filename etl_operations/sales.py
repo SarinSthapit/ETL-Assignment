@@ -25,20 +25,34 @@ def load_from_stage_to_table(cursor, stage_name, table_name):
 
 def handle_data_update(cursor, staging_table, temporary_table, key_column):
     query = f"""
-            MERGE INTO {temporary_table} tmp
-            USING {staging_table} stg ON tmp.{key_column} = stg.{key_column}
-            WHEN NOT MATCHED THEN 
-                INSERT (tmp.id, tmp.store_key, tmp.product_key, tmp.customer_key, tmp.transaction_time, tmp.quantity, tmp.amount, tmp.discount)
-                VALUES (stg.id, stg.store_id, stg.product_id, stg.customer_id, stg.transaction_time, stg.quantity, stg.amount, stg.discount)
-            WHEN MATCHED THEN UPDATE SET 
-                tmp.id = stg.id, 
-                tmp.store_key = stg.store_id, 
-                tmp.product_key = stg.product_id, 
-                tmp.customer_key = stg.customer_id, 
-                tmp.transaction_time = stg.transaction_time, 
-                tmp.quantity = stg.quantity, 
-                tmp.amount = stg.amount,  
-                tmp.discount = stg.discount
+            INSERT INTO {temporary_table} (
+                id, 
+                store_id, 
+                store_key, 
+                product_id, 
+                product_key, 
+                customer_id, 
+                customer_key, 
+                transaction_time, 
+                quantity, 
+                amount, 
+                discount)
+            SELECT 
+                stg.id, 
+                stg.store_id, 
+                tgt_store.store_key, 
+                stg.product_id, 
+                tgt_product.product_key, 
+                stg.customer_id, 
+                tgt_customer.customer_key, 
+                stg.transaction_time, 
+                stg.quantity, 
+                stg.amount, 
+                stg.discount 
+            FROM {staging_table} stg
+            FULL JOIN TGT.DWH_D_STORE_LU AS tgt_store ON tgt_store.id = stg.store_id
+            FULL JOIN TGT.DWH_D_PRODUCT_LU AS tgt_product ON tgt_product.id = stg.product_id
+            FULL JOIN TGT.DWH_D_CUSTOMER_LU AS tgt_customer ON tgt_customer.id = stg.customer_id;
         """
     cursor.execute(query)
     print(f"Handling data updation for {temporary_table} completed.")
@@ -46,9 +60,34 @@ def handle_data_update(cursor, staging_table, temporary_table, key_column):
 
 def reclassify_and_add_rows(cursor, staging_table, temporary_table, key_column):
     query = f"""
-            INSERT INTO {temporary_table} (id, store_key, product_key, customer_key, transaction_time, quantity, amount, discount)
-            SELECT stg.{key_column}, stg.store_id, stg.product_id, stg.customer_id, stg.transaction_time, tmp.quantity, tmp.amount, tmp.discount
+            INSERT INTO {temporary_table} (
+                id, 
+                store_id, 
+                store_key, 
+                product_id, 
+                product_key, 
+                customer_id, 
+                customer_key, 
+                transaction_time, 
+                quantity, 
+                amount, 
+                discount)
+            SELECT 
+                stg.id, 
+                stg.store_id, 
+                tgt_store.store_key, 
+                stg.product_id, 
+                tgt_product.product_key, 
+                stg.customer_id, 
+                tgt_customer.customer_key, 
+                stg.transaction_time, 
+                stg.quantity, 
+                stg.amount, 
+                stg.discount 
             FROM {staging_table} stg
+            FULL JOIN TGT.DWH_D_STORE_LU AS tgt_store ON tgt_store.id = stg.store_id
+            FULL JOIN TGT.DWH_D_PRODUCT_LU AS tgt_product ON tgt_product.id = stg.product_id
+            FULL JOIN TGT.DWH_D_CUSTOMER_LU AS tgt_customer ON tgt_customer.id = stg.customer_id
             WHERE stg.{key_column} NOT IN (SELECT {key_column} 
             FROM {temporary_table})
         """
@@ -57,7 +96,7 @@ def reclassify_and_add_rows(cursor, staging_table, temporary_table, key_column):
 
 def handle_closing_dimension(cursor, temporary_table, target_table, key_column):
     sequence_query = f"""
-                       CREATE SEQUENCE sequence_key
+                       CREATE OR REPLACE SEQUENCE sequence_key
                         START = 1
                         INCREMENT = 1
                         NOORDER;
@@ -67,18 +106,21 @@ def handle_closing_dimension(cursor, temporary_table, target_table, key_column):
             MERGE INTO {target_table} AS tgt
                 USING {temporary_table} AS tmp ON tgt.{key_column} = tmp.{key_column}
                 WHEN NOT MATCHED THEN 
-                    INSERT (sales_key, id, store_key, product_key, customer_key, transaction_time, quantity, amount, discount, active_flag, created_at, updated_at)
+                    INSERT (sales_key, id, store_id, store_key, product_id, product_key, customer_id, customer_key, transaction_time, quantity, amount, discount, active_flag, created_at, updated_at)
                     VALUES (
                         sequence_key.NEXTVAL,
                         tmp.id, 
-                        tmp.store_key, 
-                        tmp.product_key, 
+                        tmp.store_id,
+                        tmp.store_key,
+                        tmp.product_id, 
+                        tmp.product_key,
+                        tmp.customer_id, 
                         tmp.customer_key, 
                         tmp.transaction_time, 
                         tmp.quantity, 
                         tmp.amount, 
                         tmp.discount,
-                        'Y',
+                        'N',
                         CURRENT_TIMESTAMP,
                         CURRENT_TIMESTAMP
                     )
@@ -86,16 +128,17 @@ def handle_closing_dimension(cursor, temporary_table, target_table, key_column):
                 WHEN MATCHED THEN UPDATE SET 
                     tgt.sales_key = sequence_key.NEXTVAL,
                     tgt.id = tmp.id, 
-                    tgt.store_key = tmp.store_key, 
-                    tgt.product_key = tmp.product_key, 
+                    tgt.store_id = tmp.store_id,
+                    tgt.store_key = tmp.store_key,
+                    tgt.product_id = tmp.product_id, 
+                    tgt.product_key = tmp.product_key,
+                    tgt.customer_id = tmp.customer_id, 
                     tgt.customer_key = tmp.customer_key, 
                     tgt.transaction_time = tmp.transaction_time, 
                     tgt.quantity = tmp.quantity, 
                     tgt.amount = tmp.amount, 
                     tgt.discount = tmp.discount,
-                    tgt.active_flag = 'Y',
-                    tgt.created_at = CURRENT_TIMESTAMP,
-                    tgt.updated_at = CURRENT_TIMESTAMP
+                    tgt.active_flag = 'Y'
 
         """
     cursor.execute(query)
@@ -119,6 +162,16 @@ def main():
     )
     cursor = conn.cursor()
     cursor.execute("USE BHATBHATENI_DWH")
+
+    cursor.execute("CREATE OR REPLACE TABLE STG.STG_D_SALES_LU (id NUMBER, store_id NUMBER NOT NULL, product_id NUMBER NOT NULL, customer_id NUMBER, transaction_time TIMESTAMP, quantity NUMBER, amount NUMBER(20,2), discount NUMBER(20,2), primary key (id), FOREIGN KEY (store_id) references STG.STG_D_STORE_LU(id), FOREIGN KEY (product_id) references STG.STG_D_PRODUCT_LU(id), FOREIGN KEY (customer_id) references STG.STG_D_CUSTOMER_LU(id));")
+    print("Table created successfully: STG_D_SALES_LU")
+
+    cursor.execute("CREATE OR REPLACE TABLE TMP.TMP_D_SALES_LU (id NUMBER, store_id NUMBER, store_key NUMBER NOT NULL, product_id NUMBER, product_key NUMBER NOT NULL, customer_id NUMBER, customer_key NUMBER, transaction_time TIMESTAMP, quantity NUMBER, amount NUMBER(20,2), discount NUMBER(20,2), primary key (id), FOREIGN KEY (store_key) references TGT.DWH_D_STORE_LU(store_key), FOREIGN KEY (product_key) references TGT.DWH_D_PRODUCT_LU(product_key), FOREIGN KEY (customer_key) references TGT.DWH_D_CUSTOMER_LU(customer_key));")
+    print("Table created successfully: TMP_D_SALES_LU")
+
+    cursor.execute("CREATE OR REPLACE TABLE TGT.DWH_D_SALES_LU (sales_key NUMBER, id NUMBER, store_id NUMBER, store_key NUMBER NOT NULL, product_id NUMBER, product_key NUMBER NOT NULL, customer_id NUMBER, customer_key NUMBER, transaction_time TIMESTAMP, quantity NUMBER, amount NUMBER(20,2), discount NUMBER(20,2), active_flag BOOLEAN, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, primary key (sales_key), FOREIGN KEY (store_key) references TGT.DWH_D_STORE_LU(store_key), FOREIGN KEY (product_key) references TGT.DWH_D_PRODUCT_LU(product_key), FOREIGN KEY (customer_key) references TGT.DWH_D_CUSTOMER_LU(customer_key));")
+    print("Table created successfully: DWH_D_SALES_LU")
+
     stage_name = 'ETL_FILE_STAGE'
     staging_table = 'STG.STG_D_SALES_LU';
     temporary_table = 'TMP.TMP_D_SALES_LU';

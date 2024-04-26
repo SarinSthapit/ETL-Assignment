@@ -25,17 +25,13 @@ def load_from_stage_to_table(cursor, stage_name, table_name):
 
 def handle_data_update(cursor, staging_table, temporary_table, key_column):
     query = f"""
-            MERGE INTO {temporary_table} tmp
-            USING {staging_table} stg ON tmp.{key_column} = stg.{key_column}
-            WHEN NOT MATCHED THEN 
-                INSERT (tmp.id, tmp.sales_key, tmp.store_key, tmp.region_key, tmp.country_key)
-                VALUES (stg.id, stg.sales_id, stg.store_id, stg.region_id, stg.country_id)
-            WHEN MATCHED THEN UPDATE SET 
-                tmp.id = stg.id, 
-                tmp.sales_key = stg.sales_id, 
-                tmp.store_key = stg.store_id, 
-                tmp.region_key = stg.region_id, 
-                tmp.country_key = stg.country_id
+            INSERT INTO {temporary_table} (id, sales_id, sales_key, store_id, store_key, region_id, region_key, country_id, country_key)
+            SELECT stg.id, stg.sales_id, tgt_sales.sales_key, stg.store_id, tgt_store.store_key, stg.region_id, tgt_region.region_key, stg.country_id, tgt_country.country_key
+            FROM {staging_table} stg
+            FULL JOIN TGT.DWH_D_SALES_LU AS tgt_sales ON tgt_sales.id = stg.sales_id
+            FULL JOIN TGT.DWH_D_STORE_LU AS tgt_store ON tgt_store.id = stg.store_id
+            FULL JOIN TGT.DWH_D_REGION_LU AS tgt_region ON tgt_region.id = stg.region_id
+            FULL JOIN TGT.DWH_D_COUNTRY_LU AS tgt_country ON tgt_country.id = stg.country_id;
         """
     cursor.execute(query)
     print(f"Handling data updation for {temporary_table} completed.")
@@ -43,9 +39,13 @@ def handle_data_update(cursor, staging_table, temporary_table, key_column):
 
 def reclassify_and_add_rows(cursor, staging_table, temporary_table, key_column):
     query = f"""
-            INSERT INTO {temporary_table} (id, sales_key, store_key, region_key, country_key)
-            SELECT stg.{key_column}, stg.sales_id, stg.store_id, stg.region_id, stg.country_id
+            INSERT INTO {temporary_table} (id, sales_id, sales_key, store_id, store_key, region_id, region_key, country_id, country_key)
+            SELECT stg.id, stg.sales_id, tgt_sales.sales_key, stg.store_id, tgt_store.store_key, stg.region_id, tgt_region.region_key, stg.country_id, tgt_country.country_key
             FROM {staging_table} stg
+            FULL JOIN TGT.DWH_D_SALES_LU AS tgt_sales ON tgt_sales.id = stg.sales_id
+            FULL JOIN TGT.DWH_D_STORE_LU AS tgt_store ON tgt_store.id = stg.store_id
+            FULL JOIN TGT.DWH_D_REGION_LU AS tgt_region ON tgt_region.id = stg.region_id
+            FULL JOIN TGT.DWH_D_COUNTRY_LU AS tgt_country ON tgt_country.id = stg.country_id
             WHERE stg.{key_column} NOT IN (SELECT {key_column} 
             FROM {temporary_table})
         """
@@ -54,7 +54,7 @@ def reclassify_and_add_rows(cursor, staging_table, temporary_table, key_column):
 
 def handle_closing_dimension(cursor, temporary_table, target_table, key_column):
     sequence_query = f"""
-                       CREATE SEQUENCE sequence_key
+                       CREATE OR REPLACE SEQUENCE sequence_key
                         START = 1
                         INCREMENT = 1
                         NOORDER;
@@ -64,13 +64,17 @@ def handle_closing_dimension(cursor, temporary_table, target_table, key_column):
             MERGE INTO {target_table} AS tgt
                 USING {temporary_table} AS tmp ON tgt.{key_column} = tmp.{key_column}
                 WHEN NOT MATCHED THEN 
-                    INSERT (location_key, id, sales_key, store_key, region_key, country_key, active_flag, created_at, updated_at)
+                    INSERT (location_key, id, sales_id, sales_key, store_id, store_key, region_id, region_key, country_id, country_key, active_flag, created_at, updated_at)
                     VALUES (
                         sequence_key.NEXTVAL,
                         tmp.id, 
-                        tmp.sales_key, 
-                        tmp.store_key, 
-                        tmp.region_key, 
+                        tmp.sales_id,
+                        tmp.sales_key,
+                        tmp.store_id, 
+                        tmp.store_key,
+                        tmp.region_id, 
+                        tmp.region_key,
+                        tmp.country_id, 
                         tmp.country_key,
                         'Y',
                         CURRENT_TIMESTAMP,
@@ -84,9 +88,7 @@ def handle_closing_dimension(cursor, temporary_table, target_table, key_column):
                     tgt.store_key = tmp.store_key,
                     tgt.region_key = tmp.region_key,
                     tgt.country_key = tmp.country_key,
-                    tgt.active_flag = 'Y',
-                    tgt.created_at = CURRENT_TIMESTAMP,
-                    tgt.updated_at = CURRENT_TIMESTAMP
+                    tgt.active_flag = 'Y'
 
         """
     cursor.execute(query)
@@ -110,6 +112,16 @@ def main():
     )
     cursor = conn.cursor()
     cursor.execute("USE BHATBHATENI_DWH")
+
+    cursor.execute("CREATE OR REPLACE TABLE STG.STG_D_LOCATION_HIERARCHY_LU (id NUMBER, sales_id NUMBER, store_id NUMBER, region_id NUMBER, country_id NUMBER, PRIMARY KEY (id), FOREIGN KEY (store_id) REFERENCES STG.STG_D_STORE_LU(id), FOREIGN KEY (region_id) REFERENCES STG.STG_D_REGION_LU(id), FOREIGN KEY (country_id) REFERENCES STG.STG_D_COUNTRY_LU(id));")
+    print("Table created successfully: STG_D_LOCATION_HIERARCHY_LU")
+
+    cursor.execute("CREATE OR REPLACE TABLE TMP.TMP_D_LOCATION_HIERARCHY_LU (id NUMBER, sales_id NUMBER, sales_key NUMBER, store_id NUMBER, store_key NUMBER, region_id NUMBER, region_key NUMBER, country_id NUMBER, country_key NUMBER, PRIMARY KEY (id), FOREIGN KEY (store_key) REFERENCES TGT.DWH_D_STORE_LU(store_key), FOREIGN KEY (region_key) REFERENCES TGT.DWH_D_REGION_LU(region_key), FOREIGN KEY (country_key) REFERENCES TGT.DWH_D_COUNTRY_LU(country_key));")
+    print("Table created successfully: TMP_D_LOCATION_HIERARCHY_LU")
+
+    cursor.execute("CREATE OR REPLACE TABLE TGT.DWH_D_LOCATION_HIERARCHY_LU (location_key NUMBER, id NUMBER, sales_id NUMBER, sales_key NUMBER, store_id NUMBER, store_key NUMBER, region_id NUMBER, region_key NUMBER, country_id NUMBER, country_key NUMBER, active_flag BOOLEAN, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (location_key), FOREIGN KEY (store_key) REFERENCES TGT.DWH_D_STORE_LU(store_key), FOREIGN KEY (region_key) REFERENCES TGT.DWH_D_REGION_LU(region_key), FOREIGN KEY (country_key) REFERENCES TGT.DWH_D_COUNTRY_LU(country_key));")
+    print("Table created successfully: DWH_D_LOCATION_HIERARCHY_LU")
+
     stage_name = 'ETL_FILE_STAGE'
     staging_table = 'STG.STG_D_LOCATION_HIERARCHY_LU';
     temporary_table = 'TMP.TMP_D_LOCATION_HIERARCHY_LU';

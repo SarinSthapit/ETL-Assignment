@@ -24,14 +24,9 @@ def load_from_stage_to_table(cursor, stage_name, table_name):
 
 def handle_data_update(cursor, staging_table, temporary_table, key_column):
     query = f"""
-            MERGE INTO {temporary_table} tmp
-            USING {staging_table} stg ON tmp.{key_column} = stg.{key_column}
-            WHEN NOT MATCHED THEN 
-                INSERT (tmp.id, tmp.country_desc)
-                VALUES (stg.id, stg.country_desc)
-            WHEN MATCHED THEN UPDATE SET 
-                tmp.id = stg.id, 
-                tmp.country_desc = stg.country_desc
+            INSERT INTO {temporary_table} (id, country_desc)
+            SELECT id, country_desc
+            FROM {staging_table};
         """
     cursor.execute(query)
     print(f"Handling data updation for {temporary_table} completed.")
@@ -65,7 +60,7 @@ def handle_closing_dimension(cursor, temporary_table, target_table, key_column):
                         sequence_key.NEXTVAL,
                         tmp.id, 
                         tmp.country_desc,
-                        'Y',
+                        'N',
                         CURRENT_TIMESTAMP,
                         CURRENT_TIMESTAMP
                     )
@@ -74,9 +69,7 @@ def handle_closing_dimension(cursor, temporary_table, target_table, key_column):
                     tgt.country_key = sequence_key.NEXTVAL,
                     tgt.id = tmp.id, 
                     tgt.country_desc = tmp.country_desc,
-                    tgt.active_flag = 'Y',
-                    tgt.created_at = CURRENT_TIMESTAMP,
-                    tgt.updated_at = CURRENT_TIMESTAMP
+                    tgt.active_flag = 'Y'
 
         """
     cursor.execute(query)
@@ -100,6 +93,16 @@ def main():
     )
     cursor = conn.cursor()
     cursor.execute("USE BHATBHATENI_DWH")
+
+    cursor.execute("CREATE OR REPLACE TABLE STG.STG_D_COUNTRY_LU (id NUMBER, country_desc VARCHAR(256), PRIMARY KEY (id));")
+    print("Table created successfully: STG_D_COUNTRY_LU")
+
+    cursor.execute("CREATE OR REPLACE TABLE TMP.TMP_D_COUNTRY_LU (id NUMBER, country_desc VARCHAR(256), PRIMARY KEY (id));")
+    print("Table created successfully: TMP_D_COUNTRY_LU")
+
+    cursor.execute("CREATE OR REPLACE TABLE TGT.DWH_D_COUNTRY_LU (country_key NUMBER, id NUMBER, country_desc VARCHAR(256), active_flag BOOLEAN, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (country_key));")
+    print("Table created successfully: DWH_D_COUNTRY_LU")
+
     stage_name = 'ETL_FILE_STAGE'
     staging_table = 'STG.STG_D_COUNTRY_LU';
     temporary_table = 'TMP.TMP_D_COUNTRY_LU';
@@ -110,7 +113,6 @@ def main():
     load_from_stage_to_table(cursor, stage_name, staging_table);
     truncate_tables(cursor, temporary_table);
     handle_data_update(cursor, staging_table, temporary_table, key_column);
-    # truncate_tables(cursor, target_table);
     handle_closing_dimension(cursor, temporary_table, target_table, key_column);
 
 
